@@ -111,7 +111,7 @@ def compute_open_now(opening: Any, closing: Any, hour: int) -> int:
         return int(hour >= open_h or hour < close_h)
 
 # Load Excel metadata
-def load_parking_excel(path: str = "../PARKING.xlsx") -> List[Dict[str, Any]]:
+def load_parking_excel(path: str = "./PARKING.xlsx") -> List[Dict[str, Any]]:
     """Load parking data from Excel file."""
     try:
         xls = pd.ExcelFile(path)
