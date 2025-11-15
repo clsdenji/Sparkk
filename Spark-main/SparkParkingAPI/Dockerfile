@@ -12,7 +12,7 @@ ENV PORT=8000
 WORKDIR /app
 
 # Copy only requirements.txt initially to leverage Docker caching
-COPY SparkParkingAPI/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 
 # Install build dependencies, upgrade pip, and install Python dependencies
 RUN apt-get update \
@@ -24,7 +24,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* /root/.cache/pip
 
 # Copy the entire application code into the container
-COPY SparkParkingAPI/ /app/
+COPY . /app/
 
 # Expose the correct port (Render will override this with the dynamic $PORT)
 EXPOSE 8000
