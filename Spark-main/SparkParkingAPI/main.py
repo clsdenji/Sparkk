@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from math import radians, sin, cos, asin, sqrt
 import re
@@ -181,6 +182,9 @@ def recommend(req: ParkingRequest, top_k: int = 5):
     feature_rows = []
     parking_info = []
 
+    # Get the current time
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     for idx, p in enumerate(PARKINGS):
         try:
             lat = float(p["lat"])
@@ -224,4 +228,5 @@ def recommend(req: ParkingRequest, top_k: int = 5):
     results = [{"name": p["name"], "score": score, **p} for p, score in zip(parking_info, scores)]
     results = sorted(results, key=lambda r: r["score"], reverse=True)[:top_k]
     
-    return {"recommendations": results}
+    # Return the current time along with the recommendations
+    return {"recommendations": results, "current_time": current_time}
