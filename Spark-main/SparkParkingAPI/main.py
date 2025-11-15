@@ -10,6 +10,9 @@ import numpy as np
 import pandas as pd
 import os
 import json
+from urllib import request as urlrequest
+from urllib.parse import urlencode
+from urllib.error import URLError
 import logging
 
 # FastAPI app setup
@@ -108,7 +111,7 @@ def compute_open_now(opening: Any, closing: Any, hour: int) -> int:
         return int(hour >= open_h or hour < close_h)
 
 # Load Excel metadata
-def load_parking_excel(path: str = "Spark-main/PARKING.xlsx") -> List[Dict[str, Any]]:
+def load_parking_excel(path: str = "PARKING.xlsx") -> List[Dict[str, Any]]:
     """Load parking data from Excel file."""
     try:
         xls = pd.ExcelFile(path)
@@ -147,11 +150,11 @@ def load_parking_excel(path: str = "Spark-main/PARKING.xlsx") -> List[Dict[str, 
     print(f"✅ Total parking rows loaded from Excel: {len(all_rows)}")
     return all_rows
 
-PARKINGS = load_parking_excel("Spark-main/PARKING.xlsx")
+PARKINGS = load_parking_excel("PARKING.xlsx")
 
 # Load ML model
 try:
-    model = joblib.load("Spark-main/parking_recommender_model_v6.joblib")
+    model = joblib.load("parking_recommender_model_v6.joblib")
     print(f"🤖 Model loaded. n_features_in_ = {getattr(model, 'n_features_in_', 'unknown')}")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
