@@ -97,19 +97,30 @@ def parse_hour_from_str(s: Any) -> Optional[int]:
 def compute_open_now(opening: Any, closing: Any, hour: int) -> int:
     """Compute open_now (1/0) based on opening/closing times."""
     if isinstance(opening, str) and "24/7" in opening.upper():
+        print(f"Parking is open 24/7. Open now: {1}")
         return 1
     if isinstance(closing, str) and "24/7" in closing.upper():
+        print(f"Parking is open 24/7. Open now: {1}")
         return 1
     open_h = parse_hour_from_str(opening)
     close_h = parse_hour_from_str(closing)
+    
+    print(f"Parsed times: Opening - {open_h}, Closing - {close_h}")
+    
     if open_h is None or close_h is None:
-        return 1
+        print(f"Invalid hours: Opening - {opening}, Closing - {closing}. Open now: {1}")
+        return 1  # Default to open if hours are not valid
     if open_h == close_h:
+        print(f"Opening and closing times are the same. Open now: {1}")
         return 1
     if open_h < close_h:
-        return int(open_h <= hour < close_h)
+        open_now = int(open_h <= hour < close_h)
+        print(f"Open now: {open_now} (open_h: {open_h}, hour: {hour}, close_h: {close_h})")
+        return open_now
     else:
-        return int(hour >= open_h or hour < close_h)
+        open_now = int(hour >= open_h or hour < close_h)
+        print(f"Open now: {open_now} (open_h: {open_h}, hour: {hour}, close_h: {close_h})")
+        return open_now
 
 # Load Excel metadata
 def load_parking_excel(path: str = "./PARKING.xlsx") -> List[Dict[str, Any]]:
@@ -206,6 +217,8 @@ def recommend(req: ParkingRequest, top_k: int = 5):
                 "lat": lat,
                 "lng": lng,
                 "address": p.get("address"),
+                "opening": opening,
+                "closing": closing,
                 "initial_rate": initial_rate,
                 "cctvs": cctvs,
                 "guards": guards,

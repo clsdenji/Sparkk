@@ -356,9 +356,6 @@ useEffect(() => {
   fetchRecommendations();
 }, [destinationPlace]);
 
-
-
-
   // Auto-set origin to current location once when destination is chosen
   useEffect(() => {
     (async () => {
@@ -383,7 +380,7 @@ useEffect(() => {
   useEffect(() => {
     if (activeField !== 'to') return;
     const base =
-      currentOriginCoord ??
+      currentOriginCoord ?? 
       (location
         ? { latitude: location.latitude, longitude: location.longitude }
         : null);
@@ -451,6 +448,7 @@ useEffect(() => {
   const distanceToRouteMeters = (
     pt: { latitude: number; longitude: number },
     poly: Array<{ latitude: number; longitude: number }>,
+
   ): number => {
     try {
       if (!poly || poly.length === 0) return Number.POSITIVE_INFINITY;
@@ -464,7 +462,6 @@ useEffect(() => {
       return Number.POSITIVE_INFINITY;
     }
   };
-
   const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
     const points: Array<{ latitude: number; longitude: number }> = [];
     let index = 0,
@@ -590,7 +587,7 @@ useEffect(() => {
             : (() => {
                 try {
                   const base =
-                    currentOriginCoord ??
+                    currentOriginCoord ?? 
                     (location
                       ? {
                           latitude: location.latitude,
@@ -654,7 +651,7 @@ useEffect(() => {
   const refreshRoute = () => {
     try {
       const from =
-        currentOriginCoord ??
+        currentOriginCoord ?? 
         (location
           ? { latitude: location.latitude, longitude: location.longitude }
           : null);
@@ -677,7 +674,7 @@ useEffect(() => {
     } catch {}
     const to = { latitude: best.lat, longitude: best.lon };
     const from =
-      currentOriginCoord ??
+      currentOriginCoord ?? 
       (location
         ? { latitude: location.latitude, longitude: location.longitude }
         : null);
@@ -718,6 +715,7 @@ useEffect(() => {
 
   const animateToBounds = (
     points: Array<{ latitude: number; longitude: number }>,
+
   ) => {
     if (!mapRef.current || !points || points.length === 0) return;
     let minLat = Number.POSITIVE_INFINITY;
@@ -1328,9 +1326,9 @@ useEffect(() => {
                 <View style={styles.fieldsCol}>
                   {/* FROM */}
                   <View
-                    style={[
-                      styles.row,
-                      activeField === 'from' && styles.rowActive,
+                    style={[ 
+                      styles.row, 
+                      activeField === 'from' && styles.rowActive 
                     ]}
                   >
                     <Feather name="map-pin" size={16} color="#FFD166" />
@@ -1645,7 +1643,7 @@ useEffect(() => {
               />
             )}
 
-            {parkings.map((p) => {
+{parkings.map((p) => {
   const hours =
     p.opening || p.closing
       ? `${p.opening ?? ''}${p.opening || p.closing ? ' - ' : ''}${p.closing ?? ''}`.trim()
@@ -1672,8 +1670,7 @@ useEffect(() => {
       key={`parking-${p.index}-${p.lat}-${p.lng}`}
       coordinate={{ latitude: p.lat, longitude: p.lng }}
       title={p.name || 'Recommended parking'}
-      description={descText} // Ensure description includes all the details
-      pinColor={isSelectedParking ? SELECTED_PIN : '#FFDE59'}
+      // Don't use the description here anymore
     >
       <Callout tooltip>
         <View style={styles.calloutContainer}>
@@ -1727,6 +1724,9 @@ useEffect(() => {
     </Marker>
   );
 })}
+
+
+
 
             {routeCoords && routeCoords.length > 1 && (
               <Polyline coordinates={routeCoords} strokeColor="#34C759" strokeWidth={4} />
@@ -1862,12 +1862,12 @@ useEffect(() => {
                   </View>
                   <View style={styles.submitRow}>
                     <TouchableOpacity
-                      style={[
+                      style={[ 
                         styles.submitBtn,
                         (!reportEmail.trim() ||
                           !reportConcern ||
-                          !reportDescription.trim()) &&
-                          styles.submitBtnDisabled,
+                          !reportDescription.trim()) && 
+                        styles.submitBtnDisabled,
                       ]}
                       onPress={submitReport}
                       disabled={
@@ -1996,10 +1996,7 @@ useEffect(() => {
                         setNavigating(true);
                       } catch {}
                     }}
-                    style={[
-                      styles.navBtn,
-                      !currentDestinationCoord && styles.navBtnDisabled,
-                    ]}
+                    style={[styles.navBtn, !currentDestinationCoord && styles.navBtnDisabled]}
                     disabled={!currentDestinationCoord}
                   >
                     <Text style={styles.navBtnText}>Start</Text>
