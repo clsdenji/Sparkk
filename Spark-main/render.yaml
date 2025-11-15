@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: spark-api
+    env: docker
+    branch: main
+    dockerfilePath: SparkParkingAPI/Dockerfile
+    # Optional: set instanceType/plan if desired (e.g. "starter")
+    # instanceType: starter
+    # Add any environment variables or secrets in the Render dashboard after connecting the repo

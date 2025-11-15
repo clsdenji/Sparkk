@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "SPARK",
+    "slug": "SPARK",
+    "version": "1.0.0",
+    "orientation": "portrait",
+  "icon": "./assets/images/app_icon.jpg",
+  "scheme": "SPARK",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/app_icon.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Spark needs your location to show nearby parking areas.",
+        "UIBackgroundModes": ["location"],
+        "NSLocationAlwaysUsageDescription": "Spark needs your location to provide accurate parking spot information."
+      },
+      "config": {
+        "googleMapsApiKey": "AIzaSyDBiUBOTtioKhue7DyIorg4lGFfi60qnA0"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/app_icon.jpg",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "package": "com.cstdenji.Main",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDBiUBOTtioKhue7DyIorg4lGFfi60qnA0"
+        }
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-location",
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "SUPABASE_URL": "https://fakqwgyvbqhonwfufhxg.supabase.co",
+      "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZha3F3Z3l2YnFob253ZnVmaHhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4NjA3MTAsImV4cCI6MjA3ODQzNjcxMH0.JSOO1EZIc810xgkTIeh8WaNWjvgRm64Nim2eVCRQRy4",
+      "router": {},
+      "eas": {
+        "projectId": "fakqwgyvbqhonwfufhxg"
+      },
+      "googleMapsApiKey": "AIzaSyDBiUBOTtioKhue7DyIorg4lGFfi60qnA0",
+      "EXPO_PUBLIC_API_URL": "http://192.168.100.10:8000"
+      ,
+      "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyDBiUBOTtioKhue7DyIorg4lGFfi60qnA0"
+    }
+  }
+}

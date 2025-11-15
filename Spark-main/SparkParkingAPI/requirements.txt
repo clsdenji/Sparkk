@@ -1,0 +1,13 @@
+# Requirements for SparkParkingAPI (FastAPI backend + ML model dependencies)
+# Keep these in sync with the Python runtime used in your Dockerfile
+fastapi
+uvicorn[standard]
+numpy
+pandas
+scikit-learn
+joblib
+openpyxl
+python-dotenv
+
+# Optional/extra (uncomment if used):
+# boto3  # if you add S3 model download support
