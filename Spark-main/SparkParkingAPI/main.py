@@ -146,7 +146,7 @@ def compute_open_now(opening: Any, closing: Any, hour: int) -> int:
 # Load Excel metadata
 # =========================
 
-def load_parking_excel(path: str = "../PARKING.xlsx") -> List[Dict[str, Any]]:
+PARKINGS: List[Dict[str, Any]] = load_parking_excel("Spark-main/PARKING.xlsx")
     """
     Load all sheets from PARKING.xlsx and normalize columns
     to a consistent structure.
