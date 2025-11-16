@@ -16,7 +16,7 @@ COPY requirements.txt /app/requirements.txt
 
 # Install build dependencies, upgrade pip, and install Python dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential gcc ca-certificates \
+  && apt-get install -y --no-install-recommends build-essential gcc ca-certificates libspatialindex-dev libgeos-dev \
   && python -m pip install --upgrade pip setuptools wheel \
   && pip install --no-cache-dir -r /app/requirements.txt \
   && apt-get remove -y build-essential gcc \
@@ -30,4 +30,4 @@ COPY . /app/
 EXPOSE 8000
 
 # Start the FastAPI app using uvicorn with the dynamic $PORT
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
