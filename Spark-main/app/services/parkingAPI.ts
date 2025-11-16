@@ -1,4 +1,3 @@
-// app/services/parkingApi.ts
 export type ParkingRecommendation = {
   index: number;
   name: string | null;
@@ -18,6 +17,7 @@ export type ParkingRecommendation = {
   pwd_discount: number;
   street_parking: number;
   score: number;
+  route_time?: number; // Added route_time for travel time
 };
 
 type RecommendResponse = {
@@ -58,9 +58,9 @@ export async function getParkingRecommendations(
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      console.warn("❌ API error:", res.status, text);
-      throw new Error(`API error ${res.status}`);
+      const text = await res.text();  // Get the response body for more details
+      console.warn("❌ API error:", res.status, text); // Log the body for more information
+      throw new Error(`API error ${res.status}: ${text}`);
     }
 
     const data = (await res.json()) as RecommendResponse;
@@ -68,15 +68,17 @@ export async function getParkingRecommendations(
 
     console.log("[ParkingAPI] Got recommendations:", data.recommendations?.length);
     
-    // Log each recommendation's coordinates
+    // Log each recommendation's coordinates, opening/closing times, and route time for debugging
     data.recommendations.forEach((rec) => {
       console.log("Parking recommendation:", rec);
       console.log("Lat:", rec.lat, "Lng:", rec.lng);  // Log lat and lng to verify
+      console.log("Opening:", rec.opening, "Closing:", rec.closing);  // Log opening and closing times
+      console.log("Route time:", rec.route_time);  // Log route time for debugging
     });
 
     return data.recommendations;
   } catch (err) {
     console.error("[ParkingAPI] Network or parse error:", err);
-    throw err;
+    throw err; // Re-throw the error so it can be handled by the caller
   }
 }

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from math import radians, sin, cos, asin, sqrt
 import re
+import osmnx as ox
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -201,6 +202,13 @@ def recommend(req: ParkingRequest, top_k: int = 5):
             lat = float(p["lat"])
             lng = float(p["lng"])
             dist_km = haversine_km(req.user_lat, req.user_lng, lat, lng)
+            
+            # Load the graph for route calculations (from user's location)
+            G = ox.graph_from_point((lat, lng), dist=16000, network_type='drive')
+            orig_node = ox.distance.nearest_nodes(G, req.user_lng, req.user_lat)
+            target_node = ox.distance.nearest_nodes(G, lng, lat)
+            route_time = ox.shortest_path(G, orig_node, target_node, weight='travel_time')
+            
             opening = p.get("opening", None)
             closing = p.get("closing", None)
             open_now = compute_open_now(opening, closing, req.time_of_day)
@@ -211,7 +219,7 @@ def recommend(req: ParkingRequest, top_k: int = 5):
             pwd_discount = discount_to_int(p.get("discount_raw", p.get("PWD/SC DISCOUNT", "")))
             street_parking = yn_to_int(p.get("street_raw", p.get("STREET PARKING", "")))
 
-            feature_rows.append([dist_km, open_now, cctvs, guards, initial_rate, pwd_discount, street_parking])
+            feature_rows.append([dist_km, open_now, cctvs, guards, initial_rate, pwd_discount, street_parking, route_time])
             parking_info.append({
                 "name": p.get("name"),
                 "lat": lat,
@@ -223,7 +231,8 @@ def recommend(req: ParkingRequest, top_k: int = 5):
                 "cctvs": cctvs,
                 "guards": guards,
                 "distance_km": dist_km,
-                "open_now": open_now
+                "open_now": open_now,
+                "route_time": route_time  # Add route time to the parking info
             })
         except Exception as e:
             print(f"Error processing parking {p['name']}: {e}")

@@ -84,9 +84,9 @@ const MapScreen: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Place[]>([]);
   const [originPlace, setOriginPlace] = useState<Place | null>(null);
   const [destinationPlace, setDestinationPlace] = useState<Place | null>(null);
-  const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>(
-    [],
-  );
+  const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([]);
+  const [userBearing, setUserBearing] = useState<number | null>(null);
+  const prevLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const [parkings, setParkings] = useState<ParkingRecommendation[]>([]);
 
   const [loadingParkings, setLoadingParkings] = useState(false);
@@ -307,11 +307,6 @@ const MapScreen: React.FC = () => {
     }
   }, [locationPermissionGranted]);
 
-  // no auto-location on mount (keeping for future)
-  useEffect(() => {
-    return () => {};
-  }, []);
-
   // Saved parkings subscription
   useEffect(() => {
     try {
@@ -331,30 +326,30 @@ const MapScreen: React.FC = () => {
   }, []);
 
   // Recommendations near chosen destination
-useEffect(() => {
-  if (!destinationPlace?.lat || !destinationPlace?.lon) {
-    console.log("Destination is missing coordinates");
-    return;
-  }
-
-  console.log("Fetching parking recommendations with lat:", destinationPlace.lat, "lon:", destinationPlace.lon);
-
-  const fetchRecommendations = async () => {
-    try {
-      setLoadingParkings(true);
-      const recos = await getParkingRecommendations(destinationPlace.lat, destinationPlace.lon);
-      console.log("Fetched parking recommendations:", recos);
-      if (recos?.length > 0) {
-  setParkings(recos);
-}
-    } catch (err) {
-      console.error('Error fetching parking recommendations:', err);
-    } finally {
-      setLoadingParkings(false);
+  useEffect(() => {
+    if (!destinationPlace?.lat || !destinationPlace?.lon) {
+      console.log("Destination is missing coordinates");
+      return;
     }
-  };
-  fetchRecommendations();
-}, [destinationPlace]);
+
+    console.log("Fetching parking recommendations with lat:", destinationPlace.lat, "lon:", destinationPlace.lon);
+
+    const fetchRecommendations = async () => {
+      try {
+        setLoadingParkings(true);
+        const recos = await getParkingRecommendations(destinationPlace.lat, destinationPlace.lon);
+        console.log("Fetched parking recommendations:", recos);
+        if (recos?.length > 0) {
+          setParkings(recos);
+        }
+      } catch (err) {
+        console.error('Error fetching parking recommendations:', err);
+      } finally {
+        setLoadingParkings(false);
+      }
+    };
+    fetchRecommendations();
+  }, [destinationPlace]);
 
   // Auto-set origin to current location once when destination is chosen
   useEffect(() => {
@@ -380,7 +375,7 @@ useEffect(() => {
   useEffect(() => {
     if (activeField !== 'to') return;
     const base =
-      currentOriginCoord ?? 
+      currentOriginCoord ??
       (location
         ? { latitude: location.latitude, longitude: location.longitude }
         : null);
@@ -448,7 +443,6 @@ useEffect(() => {
   const distanceToRouteMeters = (
     pt: { latitude: number; longitude: number },
     poly: Array<{ latitude: number; longitude: number }>,
-
   ): number => {
     try {
       if (!poly || poly.length === 0) return Number.POSITIVE_INFINITY;
@@ -462,6 +456,7 @@ useEffect(() => {
       return Number.POSITIVE_INFINITY;
     }
   };
+
   const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
     const points: Array<{ latitude: number; longitude: number }> = [];
     let index = 0,
@@ -491,6 +486,24 @@ useEffect(() => {
       points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
     }
     return points;
+  };
+
+  const bearingBetweenPoints = (
+    from: { latitude: number; longitude: number },
+    to: { latitude: number; longitude: number },
+  ): number => {
+    try {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const lat1 = toRad(from.latitude);
+      const lat2 = toRad(to.latitude);
+      const dLon = toRad(to.longitude - from.longitude);
+      const y = Math.sin(dLon) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+      const brng = (Math.atan2(y, x) * 180) / Math.PI;
+      return (brng + 360) % 360;
+    } catch {
+      return 0;
+    }
   };
 
   const doSearch = async (query: string) => {
@@ -664,6 +677,23 @@ useEffect(() => {
     } catch {}
   };
 
+  const recenterAndZoom = (delta: number = 0.01) => {
+    try {
+      setFollowUser(true);
+      if (location && mapRef.current) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            latitudeDelta: delta,
+            longitudeDelta: delta,
+          },
+          450,
+        );
+      }
+    } catch {}
+  };
+
   const setDestinationFromQuery = async (query: string) => {
     const best = await fetchFirstPlace(query);
     if (!best) return false;
@@ -775,17 +805,13 @@ useEffect(() => {
         if (googleKey) {
           let googleMode:
             | 'DRIVE'
-            | 'WALK'
-            | 'BICYCLE'
             | 'TWO_WHEELER'
-            | 'TRANSIT' =
-            travelMode === 'car'
+            = travelMode === 'car'
               ? 'DRIVE'
-              : travelMode === 'walk'
-              ? 'WALK'
               : travelMode === 'motor'
               ? 'TWO_WHEELER'
-              : 'TRANSIT';
+              : 'DRIVE';
+
           const makeBody = (mode: typeof googleMode) => ({
             origin: {
               location: {
@@ -838,36 +864,6 @@ useEffect(() => {
               return;
             }
           }
-          if (googleMode === 'TWO_WHEELER') {
-            googleMode = 'DRIVE';
-            gres = await fetch(
-              'https://routes.googleapis.com/directions/v2:computeRoutes',
-              {
-                method: 'POST',
-                signal: controller.signal,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Goog-Api-Key': googleKey,
-                  'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
-                },
-                body: JSON.stringify(makeBody(googleMode)),
-              },
-            );
-            const gdata2 = await gres.json();
-            const encoded2: string | undefined =
-              gdata2?.routes?.[0]?.polyline?.encodedPolyline;
-            if (encoded2) {
-              const coords2 = decodePolyline(encoded2);
-              if (coords2.length > 1) {
-                setRouteCoords(coords2);
-                animateToBounds(coords2);
-                try {
-                  computeEta(from, to);
-                } catch {}
-                return;
-              }
-            }
-          }
         }
       } catch {}
       setRouteCoords([]);
@@ -880,7 +876,6 @@ useEffect(() => {
       }
     }
   };
-
   const autoOptimizeRoute = async (
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number },
@@ -1032,51 +1027,49 @@ useEffect(() => {
     location?.longitude,
   ]);
 
- const handleSelectResult = (item: Place) => {
-  if (activeField === 'from') {
-    setOriginPlace(item);
-    setOriginPhrase(shortAddress(item.name));
-  } else if (activeField === 'to') {
-    setDestinationPlace(item);
-    setDestinationPhrase(shortAddress(item.name)); // This should be set properly
-  }
-  try {
-    if (activeField === 'to') {
-      addSearch({
-        name: shortAddress(item.name),
-        address: item.address ?? item.name,
-        lat: item.lat,
-        lng: item.lon,
-      });
+  const handleSelectResult = (item: Place) => {
+    if (activeField === 'from') {
+      setOriginPlace(item);
+      setOriginPhrase(shortAddress(item.name));
+    } else if (activeField === 'to') {
+      setDestinationPlace(item);
+      setDestinationPhrase(shortAddress(item.name)); // This should be set properly
     }
-  } catch {}
-  setSearchResults([]);
-  Keyboard.dismiss();
+    try {
+      if (activeField === 'to') {
+        addSearch({
+          name: shortAddress(item.name),
+          address: item.address ?? item.name,
+          lat: item.lat,
+          lng: item.lon,
+        });
+      }
+    } catch {}
+    setSearchResults([]);
+    Keyboard.dismiss();
 
-  const from =
-    activeField === 'from'
-      ? { latitude: item.lat, longitude: item.lon }
-      : currentOriginCoord;
-  const to =
-    activeField === 'to'
-      ? { latitude: item.lat, longitude: item.lon }
-      : currentDestinationCoord;
+    const from =
+      activeField === 'from'
+        ? { latitude: item.lat, longitude: item.lon }
+        : currentOriginCoord;
+    const to =
+      activeField === 'to'
+        ? { latitude: item.lat, longitude: item.lon }
+        : currentDestinationCoord;
 
-  // Check if the destination coordinates are correctly set
-  console.log('Selected Destination:', to);
+    // Check if the destination coordinates are correctly set
+    console.log('Selected Destination:', to);
 
-  setTimeout(() => {
-    fitCameraIfPossible(from ?? null, to ?? null);
-    fetchRoute(from ?? null, to ?? null);
-  }, 50);
+    setTimeout(() => {
+      fitCameraIfPossible(from ?? null, to ?? null);
+      fetchRoute(from ?? null, to ?? null);
+    }, 50);
 
-  setActiveField(null);
-};
+    setActiveField(null);
+  };
 
-
-  // Live watcher for navigation / auto re-route
   useEffect(() => {
-    const shouldWatch = !!destinationPlace && (originLive || !originPlace);
+    const shouldWatch = !!destinationPlace; // We need to track location only if destination exists.
     if (!shouldWatch) {
       try {
         locationWatcherRef.current?.remove?.();
@@ -1094,40 +1087,47 @@ useEffect(() => {
         try {
           locationWatcherRef.current?.remove?.();
         } catch {}
+
         locationWatcherRef.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
-            timeInterval: 10000,
-            distanceInterval: 25,
+            timeInterval: 10000,  // Update every 10 seconds
+            distanceInterval: 25, // Update if moved by 25 meters
           },
           (pos) => {
-            const base = {
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-            };
-            setLocation(base);
+              const base = {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              };
+              setLocation(base);
+              try {
+                const prev = prevLocationRef.current;
+                if (prev) {
+                  const brng = bearingBetweenPoints(prev, base);
+                  setUserBearing(brng);
+                }
+                prevLocationRef.current = base;
+              } catch {}
 
-            // follow user when navigating
-            try {
-              if (navigating && followUser && mapRef.current) {
-                mapRef.current.animateToRegion(
-                  {
-                    latitude: base.latitude,
-                    longitude: base.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
-                  },
-                  450,
-                );
-              }
-            } catch {}
+            // If navigating, keep following the user on the map
+            if (navigating && followUser && mapRef.current) {
+              mapRef.current.animateToRegion(
+                {
+                  latitude: base.latitude,
+                  longitude: base.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                },
+                450,
+              );
+            }
 
             const to = currentDestinationCoord;
             if (!to) return;
 
             const from = base;
 
-            // 1) direct distance change (big jumps)
+            // 1) Direct distance change detection (big jumps)
             let directDist = Number.NaN;
             try {
               directDist = getDistance(from, to);
@@ -1136,36 +1136,22 @@ useEffect(() => {
             const last = lastDirectDistanceRef.current;
             lastDirectDistanceRef.current = directDist;
 
-            if (originLive || !originPlace) {
-              if (
-                isFinite(directDist) &&
-                last != null &&
-                isFinite(last) &&
-                directDist - last > 100
-              ) {
-                autoOptimizeRoute(from, to);
-              } else if (!routeCoords || routeCoords.length < 2) {
-                autoOptimizeRoute(from, to);
-              } else {
-                computeEta(from, to);
-              }
+            // Check if user is off-route or the direct distance has changed significantly
+            if (isFinite(directDist) && last != null && isFinite(last) && Math.abs(directDist - last) > 100) {
+              autoOptimizeRoute(from, to); // Recalculate route if distance is too large
+            } else if (!routeCoords || routeCoords.length < 2) {
+              autoOptimizeRoute(from, to); // If no route is available, recalculate
             } else {
-              // origin fixed, only update ETA
-              computeEta(from, to);
+              computeEta(from, to); // Otherwise, update ETA
             }
 
-            // 2) off-route detection
+            // 2) Off-route detection
             try {
               const distToRoute = distanceToRouteMeters(from, routeCoords);
               const now = Date.now();
-              if (
-                navigating &&
-                isFinite(distToRoute) &&
-                distToRoute > 80 &&
-                now - lastRerouteAtRef.current > 20000
-              ) {
+              if (navigating && isFinite(distToRoute) && distToRoute > 80 && now - lastRerouteAtRef.current > 20000) {
                 lastRerouteAtRef.current = now;
-                autoOptimizeRoute(from, to);
+                autoOptimizeRoute(from, to); // Recalculate route if user is off-route for more than 20 seconds
               }
             } catch {}
           },
@@ -1180,23 +1166,23 @@ useEffect(() => {
       locationWatcherRef.current = null;
       lastDirectDistanceRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     destinationPlace?.lat,
     destinationPlace?.lon,
-    originLive,
     originPlace?.lat,
     originPlace?.lon,
+    navigating, // Keep navigating flag so we update when navigation state changes
+    routeCoords, // Only re-trigger if route changes
   ]);
 
-  // periodic ETA refresh
   useEffect(() => {
+    // Get destination and current location
     const to = currentDestinationCoord;
     const origin =
-      currentOriginCoord ??
-      (location
-        ? { latitude: location.latitude, longitude: location.longitude }
-        : null);
+      currentOriginCoord ?? 
+      (location ? { latitude: location.latitude, longitude: location.longitude } : null);
+
+    // If there's no destination or origin, clear any existing interval
     if (!to || !origin) {
       if (etaIntervalRef.current) {
         clearInterval(etaIntervalRef.current);
@@ -1204,19 +1190,31 @@ useEffect(() => {
       }
       return;
     }
+
+    // Clear any previous interval to prevent multiple intervals running
     if (etaIntervalRef.current) {
       clearInterval(etaIntervalRef.current);
       etaIntervalRef.current = null;
     }
+
+    // Refresh ETA periodically, every 60 seconds
     etaIntervalRef.current = setInterval(() => {
-      computeEta(origin, to);
-    }, 60000) as unknown as number;
+      computeEta(origin, to);  // Recompute ETA using current location and destination
+    }, 60000); // 60 seconds interval
+
+    // Additionally, refresh ETA every time location changes
+    if (location) {
+      computeEta(location, to);  // Recompute ETA immediately if location has changed
+    }
+
+    // Cleanup the interval when component is unmounted or dependencies change
     return () => {
       if (etaIntervalRef.current) {
         clearInterval(etaIntervalRef.current);
         etaIntervalRef.current = null;
       }
     };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     destinationPlace?.lat,
@@ -1224,6 +1222,7 @@ useEffect(() => {
     originPlace?.lat,
     originPlace?.lon,
     travelMode,
+    location,  // Trigger ETA refresh when location changes
   ]);
 
   // handle navigation from other screens (params)
@@ -1643,34 +1642,41 @@ useEffect(() => {
               />
             )}
 
-{parkings.map((p) => {
+          {parkings
+            .filter((p) => p && isFinite((p as any).lat) && isFinite((p as any).lng))
+            .map((p) => {
   const hours =
     p.opening || p.closing
       ? `${p.opening ?? ''}${p.opening || p.closing ? ' - ' : ''}${p.closing ?? ''}`.trim()
-      : '';
-  const rateText = isFinite(p.initial_rate)
-    ? `~₱${p.initial_rate.toFixed(0)}`
-    : '₱—'; // Ensure the cost is shown
+      : null;
+  const rateText =
+    typeof p.initial_rate === 'number' && isFinite(p.initial_rate)
+      ? `~₱${p.initial_rate.toFixed(0)}`
+      : '₱—'; // Ensure the cost is shown
+  const distanceText =
+    typeof p.distance_km === 'number' && isFinite(p.distance_km)
+      ? `${p.distance_km.toFixed(2)} km`
+      : '—';
   const descParts: string[] = [];
-  descParts.push(`${p.distance_km.toFixed(2)} km`); // Ensure distance is shown
+  descParts.push(distanceText);
   descParts.push(rateText);
   const gc = `G${p.guards ? '✓' : '✗'}/C${p.cctvs ? '✓' : '✗'}`; // Ensure guards and CCTV info is included
   descParts.push(gc);
   if (p.street_parking) descParts.push('Street');
   if (hours) descParts.push(hours);
-  const descText = descParts.join(' • ');
+  const descText = `${distanceText} • ${rateText} • ${gc} • ${hours} • Route time: ${(p as any).route_time ? `${(p as any).route_time} min` : '—'}`;
 
   const isSelectedParking =
     destinationPlace &&
     Math.abs(destinationPlace.lat - p.lat) < 1e-6 &&
     Math.abs(destinationPlace.lon - p.lng) < 1e-6;
 
-  return (
+    return (
     <Marker
       key={`parking-${p.index}-${p.lat}-${p.lng}`}
       coordinate={{ latitude: p.lat, longitude: p.lng }}
       title={p.name || 'Recommended parking'}
-      // Don't use the description here anymore
+      description={descText || undefined}
     >
       <Callout tooltip>
         <View style={styles.calloutContainer}>
@@ -1678,9 +1684,9 @@ useEffect(() => {
             <Text style={styles.calloutTitle} numberOfLines={2}>
               {p.name || 'Recommended parking'}
             </Text>
-            <View style={styles.calloutRow}>
+              <View style={styles.calloutRow}>
               <Text style={styles.calloutChip}>
-                {p.distance_km.toFixed(2)} km {/* Distance */}
+                {distanceText} {/* Distance */}
               </Text>
               <Text style={styles.calloutChip}>{rateText}</Text> {/* Cost */}
               <Text
@@ -1724,12 +1730,19 @@ useEffect(() => {
     </Marker>
   );
 })}
-
-
-
-
+  
             {routeCoords && routeCoords.length > 1 && (
               <Polyline coordinates={routeCoords} strokeColor="#34C759" strokeWidth={4} />
+            )}
+            {location && followUser && (
+              <Marker
+                coordinate={location}
+                anchor={{ x: 0.5, y: 0.5 }}
+                rotation={userBearing ?? 0}
+                flat
+              >
+                <Feather name="navigation" size={28} color={SELECTED_PIN} />
+              </Marker>
             )}
           </MapView>
 
@@ -1920,22 +1933,6 @@ useEffect(() => {
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => setTravelMode('walk')}
-                  style={[
-                    styles.modeBtn,
-                    travelMode === 'walk' && styles.modeBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      travelMode === 'walk' && styles.modeBtnTextActive,
-                    ]}
-                  >
-                    Walk
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
                   onPress={() => setTravelMode('motor')}
                   style={[
                     styles.modeBtn,
@@ -1951,22 +1948,6 @@ useEffect(() => {
                     Motor
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTravelMode('commute')}
-                  style={[
-                    styles.modeBtn,
-                    travelMode === 'commute' && styles.modeBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      travelMode === 'commute' && styles.modeBtnTextActive,
-                    ]}
-                  >
-                    Commute
-                  </Text>
-                </TouchableOpacity>
               </View>
               {distanceToDestKm != null && (
                 <Text style={styles.distanceText}>
@@ -1979,23 +1960,24 @@ useEffect(() => {
                   : etaSeconds != null
                   ? `ETA: ${formatEta(etaSeconds)} • Arrive ${getArrivalText(
                       etaSeconds,
-                    )} (${etaProvider === 'google' ? 'Google' : '—'}${
+                    )}${
                       originLive || !!locationWatcherRef.current ? ' • Live' : ''
-                    })`
+                    }`
                   : etaError ||
-                    `ETA unavailable (${etaProvider === 'google' ? 'Google' : '—'})`}
+                    'ETA unavailable'}
               </Text>
               <View style={styles.navRow}>
                 {!navigating ? (
                   <TouchableOpacity
                     onPress={async () => {
-                      try {
-                        if (!currentDestinationCoord) return;
-                        setFollowUser(true);
-                        await useCurrentAsOrigin(currentDestinationCoord);
-                        setNavigating(true);
-                      } catch {}
-                    }}
+                          try {
+                            if (!currentDestinationCoord) return;
+                            await useCurrentAsOrigin(currentDestinationCoord);
+                            // ensure we follow and zoom to current location
+                            try { recenterAndZoom(0.01); } catch {}
+                            setNavigating(true);
+                          } catch {}
+                        }}
                     style={[styles.navBtn, !currentDestinationCoord && styles.navBtnDisabled]}
                     disabled={!currentDestinationCoord}
                   >
@@ -2014,20 +1996,7 @@ useEffect(() => {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
-                        setFollowUser(true);
-                        try {
-                          if (location && mapRef.current) {
-                            mapRef.current.animateToRegion(
-                              {
-                                latitude: location.latitude,
-                                longitude: location.longitude,
-                                latitudeDelta: 0.01,
-                                longitudeDelta: 0.01,
-                              },
-                              450,
-                            );
-                          }
-                        } catch {}
+                        try { recenterAndZoom(0.01); } catch {}
                       }}
                       style={styles.recenterBtn}
                     >
