@@ -1,18 +1,9 @@
-# Core dependencies for FastAPI backend
 fastapi
 uvicorn[standard]
-
-# Data Science and ML Dependencies
 numpy
 pandas
 scikit-learn
 joblib
-
-# Excel handling for loading parking data
 openpyxl
-
-# To manage environment variables
 python-dotenv
-
-# Optional/extra (uncomment if used):
-# boto3  # if you add S3 model download support
+osmnx  # Add this line
