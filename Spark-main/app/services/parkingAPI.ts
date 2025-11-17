@@ -30,7 +30,7 @@ type RecommendResponse = {
 };
 
 // 🔥 Hardcode your Render base URL
-const API_BASE_URL = "https://spark-z3mb.onrender.com";
+const API_BASE_URL = "https://sparkk-7js1.onrender.com";
 
 export async function getParkingRecommendations(
   userLat: number,

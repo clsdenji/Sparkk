@@ -2,9 +2,11 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from math import radians, sin, cos, asin, sqrt
 import re
+import math
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 import joblib
 import numpy as np
@@ -123,7 +125,7 @@ def compute_open_now(opening: Any, closing: Any, hour: int) -> int:
         return open_now
 
 # Load Excel metadata
-def load_parking_excel(path: str = "./PARKING.xlsx") -> List[Dict[str, Any]]:
+def load_parking_excel(path: str = "./SparkParkingAPI/PARKING.xlsx") -> List[Dict[str, Any]]:
     """Load parking data from Excel file."""
     try:
         xls = pd.ExcelFile(path)
@@ -162,11 +164,11 @@ def load_parking_excel(path: str = "./PARKING.xlsx") -> List[Dict[str, Any]]:
     print(f"✅ Total parking rows loaded from Excel: {len(all_rows)}")
     return all_rows
 
-PARKINGS = load_parking_excel("./PARKING.xlsx")
+PARKINGS = load_parking_excel("./SparkParkingAPI/PARKING.xlsx")
 
 # Load ML model
 try:
-    model = joblib.load("parking_recommender_model_v6.joblib")
+    model = joblib.load("./SparkParkingAPI/parking_recommender_model_v6.joblib")
     print(f"🤖 Model loaded. n_features_in_ = {getattr(model, 'n_features_in_', 'unknown')}")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
@@ -183,6 +185,8 @@ class ParkingRequest(BaseModel):
 @app.get("/")
 def home():
     return {"message": "Spark Parking API running!"}
+
+
 
 @app.post("/recommend")
 def recommend(req: ParkingRequest, top_k: int = 5):
@@ -242,4 +246,38 @@ def recommend(req: ParkingRequest, top_k: int = 5):
     results = sorted(results, key=lambda r: r["score"], reverse=True)[:top_k]
     
     # Return the current time along with the recommendations
-    return {"recommendations": results, "current_time": current_time}
+    response_obj = {"recommendations": results, "current_time": current_time}
+    data = jsonable_encoder(response_obj)
+    return sanitize_for_json(data)
+
+def sanitize_for_json(obj):
+    # Recursively sanitize containers
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+
+    # Handle numpy types (scalars and arrays) if numpy is available
+    try:
+        import numpy as _np
+
+        # numpy scalar numbers
+        if isinstance(obj, (_np.floating, _np.integer)):
+            val = obj.item()
+            if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+                return None
+            return val
+
+        # numpy arrays -> convert to lists and sanitize
+        if isinstance(obj, _np.ndarray):
+            return [sanitize_for_json(v) for v in obj.tolist()]
+    except Exception:
+        pass
+
+    # Python float NaN/Inf
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+
+    return obj

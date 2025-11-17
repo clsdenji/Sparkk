@@ -1919,22 +1919,7 @@ useEffect(() => {
                     Car
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTravelMode('walk')}
-                  style={[
-                    styles.modeBtn,
-                    travelMode === 'walk' && styles.modeBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      travelMode === 'walk' && styles.modeBtnTextActive,
-                    ]}
-                  >
-                    Walk
-                  </Text>
-                </TouchableOpacity>
+                {/* Walk mode removed per request */}
                 <TouchableOpacity
                   onPress={() => setTravelMode('motor')}
                   style={[
@@ -1951,22 +1936,7 @@ useEffect(() => {
                     Motor
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTravelMode('commute')}
-                  style={[
-                    styles.modeBtn,
-                    travelMode === 'commute' && styles.modeBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      travelMode === 'commute' && styles.modeBtnTextActive,
-                    ]}
-                  >
-                    Commute
-                  </Text>
-                </TouchableOpacity>
+                {/* Commute mode removed per request */}
               </View>
               {distanceToDestKm != null && (
                 <Text style={styles.distanceText}>
@@ -1979,11 +1949,11 @@ useEffect(() => {
                   : etaSeconds != null
                   ? `ETA: ${formatEta(etaSeconds)} • Arrive ${getArrivalText(
                       etaSeconds,
-                    )} (${etaProvider === 'google' ? 'Google' : '—'}${
+                    )} (${etaProvider === 'google' ? '' : '—'}${
                       originLive || !!locationWatcherRef.current ? ' • Live' : ''
                     })`
                   : etaError ||
-                    `ETA unavailable (${etaProvider === 'google' ? 'Google' : '—'})`}
+                    `ETA unavailable (${etaProvider === 'google' ? '' : '—'})`}
               </Text>
               <View style={styles.navRow}>
                 {!navigating ? (
