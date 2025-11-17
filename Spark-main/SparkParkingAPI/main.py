@@ -125,7 +125,7 @@ def compute_open_now(opening: Any, closing: Any, hour: int) -> int:
         return open_now
 
 # Load Excel metadata
-def load_parking_excel(path: str = "./SparkParkingAPI/PARKING.xlsx") -> List[Dict[str, Any]]:
+def load_parking_excel(path: str = "./PARKING.xlsx") -> List[Dict[str, Any]]:
     """Load parking data from Excel file."""
     try:
         xls = pd.ExcelFile(path)
@@ -164,11 +164,18 @@ def load_parking_excel(path: str = "./SparkParkingAPI/PARKING.xlsx") -> List[Dic
     print(f"✅ Total parking rows loaded from Excel: {len(all_rows)}")
     return all_rows
 
-PARKINGS = load_parking_excel("./SparkParkingAPI/PARKING.xlsx")
+## Resolve data paths relative to this module so server can be started from project root
+MODULE_DIR = os.path.dirname(__file__)
+EXCEL_PATH = os.path.join(MODULE_DIR, "PARKING.xlsx")
+MODEL_PATH = os.path.join(MODULE_DIR, "parking_recommender_model_v6.joblib")
+
+PARKINGS = load_parking_excel(EXCEL_PATH)
 
 # Load ML model
 try:
-    model = joblib.load("./SparkParkingAPI/parking_recommender_model_v6.joblib")
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
+    model = joblib.load(MODEL_PATH)
     print(f"🤖 Model loaded. n_features_in_ = {getattr(model, 'n_features_in_', 'unknown')}")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
