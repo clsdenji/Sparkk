@@ -12,18 +12,16 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from "expo-font";
 import { MuseoModerno_700Bold } from "@expo-google-fonts/museomoderno";
 import { supabase } from "./services/supabaseClient";
 
-// --- Types for Animated values (TS only) ---
 import type { Animated as RNAnimated } from "react-native";
 
-// --- Black & Yellow Theme (Spark standard theme) ---
-const YELLOW = "#FFD166"; // main accent
-const YELLOW_GLOW = "rgba(255, 209, 102, 0.55)"; // soft golden glow
+const YELLOW = "#FFD166"; 
+const YELLOW_GLOW = "rgba(255, 209, 102, 0.55)"; 
 
-// Map old names to new palette (for reuse in code)
 const GREEN = YELLOW;
 const GOLD = YELLOW;
 const GREEN_GLOW = YELLOW_GLOW;
@@ -136,8 +134,11 @@ export default function AuthSplashScreen() {
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ]).start(({ finished }) => {
+      ]).start(async ({ finished }) => {
         if (finished) {
+          try {
+            await AsyncStorage.setItem('splash_shown_v2', '1');
+          } catch {}
           router.replace("/auth/LoginPage");
         }
       });

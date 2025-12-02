@@ -10,7 +10,6 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
-/** Spark palette (Black + Gold aesthetic) */
 const BLACK = "#000000";
 const DARK = "#0d0d0d";
 const GOLD = "#FFDE59";
@@ -80,7 +79,6 @@ const CustomNavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
         </View>
       </LinearGradient>
 
-      {/* Soft gold underglow */}
       <View style={styles.glow} />
     </View>
   );

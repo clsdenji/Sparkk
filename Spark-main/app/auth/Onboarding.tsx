@@ -30,7 +30,6 @@ export default function Onboarding() {
   const linkOpacity = useRef(new Animated.Value(1)).current;
   const [linkHeight, setLinkHeight] = useState(0);
 
-  // Float + glow
   const floatY = useRef(new Animated.Value(0)).current;
   const glowOpacity = useRef(new Animated.Value(0.9)).current;
 
@@ -65,6 +64,47 @@ export default function Onboarding() {
     } catch {}
     router.replace("/(tabs)/map");
   };
+
+  // Safety guard: ensure only newly-registered users can view onboarding.
+  // If the user is not considered 'new' according to DB, mark onboarding seen and redirect.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes?.user?.id;
+        if (!userId) return; // anonymous or not signed in
+        const { data: dbUser, error } = await supabase
+          .from("users")
+          .select("created_at")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!mounted) return;
+        if (error || !dbUser?.created_at) {
+          await AsyncStorage.setItem(`onboarding_seen_v2:${userId}`, "1");
+          router.replace("/(tabs)/map");
+          return;
+        }
+        const createdAt = new Date(dbUser.created_at).getTime();
+        const ageMs = Date.now() - createdAt;
+        const ONE_DAY = 1000 * 60 * 60 * 24;
+        const isNew = ageMs <= ONE_DAY;
+        if (!isNew) {
+          await AsyncStorage.setItem(`onboarding_seen_v2:${userId}`, "1");
+          router.replace("/(tabs)/map");
+        }
+      } catch (e) {
+        // On any error, quietly redirect to main app
+        try {
+          const { data: userRes } = await supabase.auth.getUser();
+          const userId = userRes?.user?.id;
+          if (userId) await AsyncStorage.setItem(`onboarding_seen_v2:${userId}`, "1");
+        } catch {}
+        router.replace("/(tabs)/map");
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const onScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { x: scrollX } } }],

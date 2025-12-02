@@ -38,6 +38,8 @@ import {
 } from '../services/attachments';
 import { supabase } from '../services/supabaseClient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ThemedPrompt from '../components/ThemedPrompt';
 import {
   getEtaSeconds,
   getEtaDetailed,
@@ -49,8 +51,7 @@ import { optimizeRoute } from '../services/routeOptimization';
 
 const GOLD = '#FFDE59';
 const GRAY = '#9CA3AF';
-const SELECTED_PIN = '#00A3FF'; // selected destination pin
-
+const SELECTED_PIN = '#FFD166'; 
 type Place = {
   name: string;
   address?: string | null;
@@ -124,6 +125,12 @@ const MapScreen: React.FC = () => {
   const [attachments, setAttachments] = useState<FormAttachment[]>([]);
   const [pickingAttachment, setPickingAttachment] = useState(false);
 
+  const [promptState, setPromptState] = useState({ visible: false, title: '', message: '', buttons: undefined as any });
+  const showPrompt = ({ title, message, buttons = [{ text: 'OK' }] }: { title?: string; message?: string; buttons?: any }) => {
+    setPromptState({ visible: true, title: title || '', message: message || '', buttons });
+  };
+  const hidePrompt = () => setPromptState((s) => ({ ...s, visible: false }));
+
   // ETA state
   const [travelMode, setTravelMode] = useState<TravelMode>('car');
   const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
@@ -139,6 +146,9 @@ const MapScreen: React.FC = () => {
   // Navigation controls
   const [navigating, setNavigating] = useState(false);
   const [followUser, setFollowUser] = useState(true);
+  const [followArrowPos, setFollowArrowPos] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [followArrowHeading, setFollowArrowHeading] = useState<number>(0);
+  const prevLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const lastRerouteAtRef = useRef<number>(0);
   const lastDirectDistanceRef = useRef<number | null>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -155,6 +165,33 @@ const MapScreen: React.FC = () => {
   const currentDestinationCoord = destinationPlace
     ? { latitude: destinationPlace.lat, longitude: destinationPlace.lon }
     : null;
+
+  // When following is active, show an arrow at the start of the route (or origin/location)
+  const followStartCoord: { latitude: number; longitude: number } | null =
+    routeCoords && routeCoords.length > 0
+      ? routeCoords[0]
+      : currentOriginCoord ?? (location ? { latitude: location.latitude, longitude: location.longitude } : null);
+  const followHeading = (() => {
+    try {
+      if (routeCoords && routeCoords.length > 1) {
+        const lat1 = routeCoords[0].latitude;
+        const lon1 = routeCoords[0].longitude;
+        const lat2 = routeCoords[1].latitude;
+        const lon2 = routeCoords[1].longitude;
+        const toRad = (d: number) => (d * Math.PI) / 180;
+        const toDeg = (r: number) => (r * 180) / Math.PI;
+        const φ1 = toRad(lat1);
+        const φ2 = toRad(lat2);
+        const Δλ = toRad(lon2 - lon1);
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x =
+          Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const θ = Math.atan2(y, x);
+        return (toDeg(θ) + 360) % 360;
+      }
+    } catch {}
+    return 0;
+  })();
 
   const showEditFab = !showReportForm && !currentDestinationCoord;
 
@@ -185,7 +222,14 @@ const MapScreen: React.FC = () => {
 
   const submitReport = async () => {
     if (!reportEmail.trim() || !reportConcern || !reportDescription.trim()) {
-      console.log('Report form: missing required fields');
+      showPrompt({ title: 'Incomplete', message: 'Please fill all required fields.' });
+      return;
+    }
+
+    const sanitizedEmail = reportEmail.trim().toLowerCase();
+    const EMAIL_REGEX = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+    if (!EMAIL_REGEX.test(sanitizedEmail)) {
+      showPrompt({ title: 'Invalid email', message: 'Please enter a valid email address.' });
       return;
     }
     const payload: any = {
@@ -241,10 +285,7 @@ const MapScreen: React.FC = () => {
           });
         }
       } catch {}
-      Alert.alert(
-        'Form Submitted!',
-        'Thank you for your feedback. We will continue to improve our service.',
-      );
+      showPrompt({ title: 'Form Submitted!', message: 'Thank you for your feedback. We will continue to improve our service.' });
     } catch (e: any) {
       console.log('Submitting report (mock fallback):', payload);
       try {
@@ -262,10 +303,7 @@ const MapScreen: React.FC = () => {
           });
         }
       } catch {}
-      Alert.alert(
-        'Form Submitted!',
-        'Thank you for your feedback. We will continue to improve our service.',
-      );
+      showPrompt({ title: 'Form Submitted!', message: 'Thank you for your feedback. We will continue to improve our service.' });
     }
     // Reset form
     setShowReportForm(false);
@@ -281,10 +319,74 @@ const MapScreen: React.FC = () => {
   const [locationPermissionGranted, setLocationPermissionGranted] =
     useState<boolean | null>(null);
 
+  // bolt visibility: only true when Start is tapped
+  const [boltActive, setBoltActive] = useState<boolean>(false);
+  // recent origins for prediction in FROM field
+  const [recentFroms, setRecentFroms] = useState<Array<Place>>([]);
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const RECENT_FROMS_KEY = 'recent_froms_v1'; // base key; actual key will include user id
+
+  // resolve current Supabase user id once
+  useEffect(() => {
+    (async () => {
+      try {
+        // supabase.auth.getUser() returns { data: { user } } in v2
+        const resp: any = await supabase.auth.getUser?.();
+        const user = resp?.data?.user ?? resp?.user ?? null;
+        if (user && user.id) setUserId(user.id);
+      } catch (e) {
+        try {
+          // fallback for older client APIs
+          const user = (supabase.auth as any).user?.() ?? null;
+          if (user && user.id) setUserId(user.id);
+        } catch {}
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const key = `${RECENT_FROMS_KEY}:${userId ?? 'anon'}`;
+        const raw = await AsyncStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Array<Place>;
+          const inPH = parsed.filter((p) => {
+            if (!p) return false;
+            const lat = Number(p.lat);
+            const lon = Number(p.lon);
+            return lat >= 4.5 && lat <= 21.5 && lon >= 116 && lon <= 127;
+          });
+          setRecentFroms(inPH.slice(0, 6));
+        }
+      } catch (e) {}
+    })();
+  }, [userId]);
+
+  const addRecentFrom = async (p: Place | null) => {
+    try {
+      if (!p) return;
+      const lat = Number(p.lat);
+      const lon = Number(p.lon);
+      if (!(isFinite(lat) && isFinite(lon))) return;
+      if (lat < 4.5 || lat > 21.5 || lon < 116 || lon > 127) return;
+      setRecentFroms((prev) => {
+        const filtered = prev.filter(
+          (x) => Math.abs(x.lat - p.lat) > 1e-6 || Math.abs(x.lon - p.lon) > 1e-6,
+        );
+        const next = [p, ...filtered].slice(0, 6);
+        const key = `${RECENT_FROMS_KEY}:${userId ?? 'anon'}`;
+        AsyncStorage.setItem(key, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    } catch {}
+  };
+
   // Ask for permission once on mount
   useEffect(() => {
     const checkLocationPermission = async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.getForegroundPermissionsAsync();
       const granted = status === 'granted';
       setLocationPermissionGranted(granted);
 
@@ -493,6 +595,24 @@ useEffect(() => {
     return points;
   };
 
+  const getBearing = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ) => {
+    // returns bearing in degrees from point1 to point2
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const toDeg = (r: number) => (r * 180) / Math.PI;
+    const φ1 = toRad(lat1);
+    const φ2 = toRad(lat2);
+    const Δλ = toRad(lon2 - lon1);
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    const θ = Math.atan2(y, x);
+    return (toDeg(θ) + 360) % 360;
+  };
+
   const doSearch = async (query: string) => {
     const q = query.trim();
     if (q.length < 2) {
@@ -695,6 +815,9 @@ useEffect(() => {
     if (!best) return false;
     setActiveField('from');
     setOriginPlace(best);
+    try {
+      addRecentFrom(best);
+    } catch {}
     setOriginLive(false);
     try {
       setOriginPhrase(shortAddress(best.name));
@@ -946,7 +1069,7 @@ useEffect(() => {
     try {
       let base = location;
       if (!base) {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         if (status !== 'granted') return;
         const current = await Location.getCurrentPositionAsync({});
         base = {
@@ -964,6 +1087,9 @@ useEffect(() => {
         ? { name: addr, lat: base.latitude, lon: base.longitude }
         : null;
       setOriginPlace(place);
+      try {
+        await addRecentFrom(place);
+      } catch {}
       setOriginPhrase(shortAddress(addr));
       setSearchResults([]);
       Keyboard.dismiss();
@@ -993,7 +1119,22 @@ useEffect(() => {
       handledParamRef.current = null;
       const to = currentDestinationCoord;
       setTimeout(() => {
-        fitCameraIfPossible(null, to);
+        try {
+          // If there's no destination, recenter the map to Manila
+          if (!to && mapRef.current) {
+            mapRef.current.animateToRegion(
+              {
+                latitude: MANILA.latitude,
+                longitude: MANILA.longitude,
+                latitudeDelta: 0.12,
+                longitudeDelta: 0.12,
+              },
+              500,
+            );
+          } else {
+            fitCameraIfPossible(null, to);
+          }
+        } catch {}
       }, 50);
     } catch {}
   };
@@ -1036,9 +1177,12 @@ useEffect(() => {
   if (activeField === 'from') {
     setOriginPlace(item);
     setOriginPhrase(shortAddress(item.name));
+    try {
+      addRecentFrom(item);
+    } catch {}
   } else if (activeField === 'to') {
     setDestinationPlace(item);
-    setDestinationPhrase(shortAddress(item.name)); // This should be set properly
+    setDestinationPhrase(shortAddress(item.name)); 
   }
   try {
     if (activeField === 'to') {
@@ -1062,7 +1206,6 @@ useEffect(() => {
       ? { latitude: item.lat, longitude: item.lon }
       : currentDestinationCoord;
 
-  // Check if the destination coordinates are correctly set
   console.log('Selected Destination:', to);
 
   setTimeout(() => {
@@ -1088,7 +1231,7 @@ useEffect(() => {
 
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         if (status !== 'granted') return;
 
         try {
@@ -1120,6 +1263,17 @@ useEffect(() => {
                   450,
                 );
               }
+            } catch {}
+
+            // Update live follow arrow position/heading (always update; rendering gated by `followUser`)
+            try {
+              setFollowArrowPos(base);
+              const prev = prevLocationRef.current;
+              if (prev) {
+                const heading = getBearing(prev.latitude, prev.longitude, base.latitude, base.longitude);
+                setFollowArrowHeading(heading);
+              }
+              prevLocationRef.current = base;
             } catch {}
 
             const to = currentDestinationCoord;
@@ -1421,13 +1575,33 @@ useEffect(() => {
                 originPhrase.trim().length >= 2;
               const showDropdown =
                 !!activeField &&
-                (hasRecoContent || hasSearchResults || hasUnknownTo || hasUnknownFrom);
+                (hasRecoContent || hasSearchResults || hasUnknownTo || hasUnknownFrom || (activeField === 'from' && recentFroms.length > 0));
               return showDropdown;
             })() ? (
               <ScrollView
                 style={styles.resultsContainer}
                 keyboardShouldPersistTaps="handled"
               >
+                {/* Recent FROM predictions */}
+                {activeField === 'from' && recentFroms.length > 0 && (
+                  <View>
+                    <View style={styles.recoHeaderRow}>
+                      <Text style={styles.recoHeaderText}>Recent origins</Text>
+                    </View>
+                    {recentFroms.map((r, i) => (
+                      <TouchableOpacity
+                        key={`recent-from-${r.lat}-${r.lon}-${i}`}
+                        style={styles.resultItem}
+                        onPress={() => handleSelectResult(r)}
+                      >
+                        <Text style={styles.resultText} numberOfLines={2}>
+                          {r.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    <View style={[styles.sectionDivider, styles.sectionDividerProminent]} />
+                  </View>
+                )}
                 {/* Recommended (TO) */}
                 {activeField === 'to' && (
                   <View>
@@ -1643,6 +1817,29 @@ useEffect(() => {
               />
             )}
 
+            {boltActive && (followArrowPos ?? followStartCoord) ? (
+              <Marker
+                key="follow-start"
+                coordinate={followArrowPos ?? followStartCoord!}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={true}
+              >
+                <View style={[styles.followMarker, { width: 28, height: 28, borderRadius: 14 }]}> 
+                  <View
+                    style={{
+                      transform: [
+                        { rotate: `${followArrowPos ? followArrowHeading : followHeading}deg` },
+                      ],
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Feather name="zap" size={14} color={GOLD} />
+                  </View>
+                </View>
+              </Marker>
+            ) : null}
+
 {parkings.map((p) => {
   const hours =
     p.opening || p.closing
@@ -1669,6 +1866,7 @@ useEffect(() => {
     <Marker
       key={`parking-${p.index}-${p.lat}-${p.lng}`}
       coordinate={{ latitude: p.lat, longitude: p.lng }}
+      pinColor={isSelectedParking ? SELECTED_PIN : undefined}
       title={p.name || 'Recommended parking'}
       // Don't use the description here anymore
     >
@@ -1961,9 +2159,41 @@ useEffect(() => {
                     onPress={async () => {
                       try {
                         if (!currentDestinationCoord) return;
-                        setFollowUser(true);
-                        await useCurrentAsOrigin(currentDestinationCoord);
-                        setNavigating(true);
+                          // initialize follow arrow position when starting
+                          try {
+                            const initialPos =
+                              location
+                                ? { latitude: location.latitude, longitude: location.longitude }
+                                : followStartCoord ?? null;
+                            if (initialPos) {
+                              setFollowArrowPos(initialPos);
+                              prevLocationRef.current = initialPos;
+                              setFollowArrowHeading(0);
+                            }
+                          } catch {}
+                          await useCurrentAsOrigin(currentDestinationCoord);
+                          // mark bolt as active because Start was tapped
+                          setBoltActive(true);
+                          // zoom to start/initial position so user sees the bolt location
+                          try {
+                            const target =
+                              followStartCoord ??
+                              (location
+                                ? { latitude: location.latitude, longitude: location.longitude }
+                                : null);
+                            if (target && mapRef.current) {
+                              mapRef.current.animateToRegion(
+                                {
+                                  latitude: target.latitude,
+                                  longitude: target.longitude,
+                                  latitudeDelta: 0.01,
+                                  longitudeDelta: 0.01,
+                                },
+                                450,
+                              );
+                            }
+                          } catch {}
+                          setNavigating(true);
                       } catch {}
                     }}
                     style={[styles.navBtn, !currentDestinationCoord && styles.navBtnDisabled]}
@@ -1976,35 +2206,21 @@ useEffect(() => {
                     <TouchableOpacity
                       onPress={() => {
                         setNavigating(false);
-                        setFollowUser(false);
+                        // stop showing bolt since End was tapped
+                        try {
+                          setBoltActive(false);
+                        } catch {}
+                        try {
+                          setFollowArrowPos(null);
+                          prevLocationRef.current = null;
+                          setFollowArrowHeading(0);
+                        } catch {}
                       }}
                       style={styles.navBtn}
                     >
                       <Text style={styles.navBtnText}>End</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setFollowUser(true);
-                        try {
-                          if (location && mapRef.current) {
-                            mapRef.current.animateToRegion(
-                              {
-                                latitude: location.latitude,
-                                longitude: location.longitude,
-                                latitudeDelta: 0.01,
-                                longitudeDelta: 0.01,
-                              },
-                              450,
-                            );
-                          }
-                        } catch {}
-                      }}
-                      style={styles.recenterBtn}
-                    >
-                      <Text style={styles.recenterBtnText}>
-                        {followUser ? 'Following' : 'Recenter'}
-                      </Text>
-                    </TouchableOpacity>
+                    
                   </>
                 )}
               </View>
@@ -2012,6 +2228,13 @@ useEffect(() => {
           )}
         </>
       )}
+      <ThemedPrompt
+        visible={promptState.visible}
+        title={promptState.title}
+        message={promptState.message}
+        buttons={promptState.buttons}
+        onRequestClose={hidePrompt}
+      />
     </View>
   );
 };
@@ -2166,6 +2389,7 @@ const styles = StyleSheet.create({
     marginTop: -14,
   },
   sectionDivider: { height: 1, backgroundColor: '#222', marginVertical: 6 },
+  sectionDividerProminent: { height: 3, backgroundColor: '#FFD166', marginVertical: 8, borderRadius: 2 },
   distanceContainer: {
     position: 'absolute',
     left: 20,
@@ -2201,6 +2425,21 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   recenterBtnText: { color: '#FFD166', fontSize: 12, fontWeight: '600' },
+  followMarker: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#000000cc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FFD166',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#222',
+  },
   modeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   modeBtn: {
     backgroundColor: '#111',

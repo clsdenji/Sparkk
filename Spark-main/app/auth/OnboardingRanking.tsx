@@ -14,7 +14,7 @@ import { useRouter } from "expo-router";
 
 const GOLD = "#FFDE59";
 const YELLOW_GLOW = "rgba(255, 222, 89, 0.45)";
-const RED = "#FF4D4D"; // kept in case you want it later
+const RED = "#FF4D4D"; 
 
 export default function OnboardingRanking() {
   const router = useRouter();

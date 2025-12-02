@@ -29,7 +29,6 @@ type RecommendResponse = {
   recommendations: ParkingRecommendation[];
 };
 
-// 🔥 Hardcode your Render base URL
 const API_BASE_URL = "https://sparkk-7js1.onrender.com";
 
 export async function getParkingRecommendations(

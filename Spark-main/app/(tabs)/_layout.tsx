@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import CustomNavBar from "./CustomNavBar";
-import { enableScreens } from 'react-native-screens'; // import enableScreens
+import { enableScreens } from 'react-native-screens'; 
 
 // Call enableScreens at the start of the app
 enableScreens();
@@ -19,10 +19,7 @@ export default function TabsLayout() {
         name="map"
         options={{
           headerShown: false,
-          title: "Map",
-          // Define transitions here for custom tab transitions
-          // Example: Using `tabBarOptions` for animations or custom transitions
-        }}
+          title: "Map",        }}
       />
       <Tabs.Screen
         name="saved"

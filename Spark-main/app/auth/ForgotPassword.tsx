@@ -20,7 +20,6 @@ import { Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Roboto_400Regular } from "@expo-google-fonts/roboto";
 import { supabase } from "../services/supabaseClient";
 
-// Black & Yellow palette
 const GOLD = "#FFDE59";
 const YELLOW_GLOW = "rgba(255, 209, 102, 0.45)";
 const AMBER = "#FFB84D";

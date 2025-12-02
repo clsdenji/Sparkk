@@ -39,7 +39,7 @@ export default function RootLayout() {
   // Check for location permission
   useEffect(() => {
     const checkLocationPermission = async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.getForegroundPermissionsAsync();
       setLocationPermissionGranted(status === 'granted');
     };
     checkLocationPermission();

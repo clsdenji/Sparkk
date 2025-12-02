@@ -30,7 +30,7 @@ function getBaseAndHeaders() {
 }
 
 function mapMode(mode: TravelMode): 'car'|'walk'|'motor'|'commute' {
-  return mode; // passthrough; customize here if server expects other tokens
+  return mode; 
 }
 
 export async function fetchCustomRoute(
@@ -51,7 +51,6 @@ export async function fetchCustomRoute(
   const res = await fetch(`${base}${routePath.startsWith('/') ? '' : '/'}${routePath}`, { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) return null;
   const data = await res.json();
-  // Accept a few common shapes
   let coordinates: Array<[number, number]> | Array<{ lat: number; lon: number }> | Array<{ latitude: number; longitude: number }> | undefined;
   if (Array.isArray(data?.geometry)) coordinates = data.geometry as any;
   else if (Array.isArray(data?.route?.geometry)) coordinates = data.route.geometry as any;

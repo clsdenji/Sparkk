@@ -13,6 +13,7 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
+import ThemedPrompt from "../components/ThemedPrompt";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFonts } from "expo-font";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins";
@@ -21,14 +22,26 @@ import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../services/supabaseClient";
 
-// Black & Yellow palette
-const GOLD = "#FFDE59"; // main yellow
+const GOLD = "#FFDE59"; 
 const YELLOW_GLOW = "rgba(255, 209, 102, 0.45)";
-const AMBER = "#FFB84D"; // keep for warnings
-const RED = "#FF4D4D";   // error
+const AMBER = "#FFB84D"; 
+const RED = "#FF4D4D";   
 
 export default function LoginPage() {
   const router = useRouter();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem('splash_shown_v2');
+        if (!seen) {
+          router.replace('/');
+        }
+      } catch (e) {
+        
+      }
+    })();
+  }, []);
 
   // form state
   const [name, setName] = useState("");
@@ -165,7 +178,7 @@ export default function LoginPage() {
 
   const handleSubmit = async () => {
     if (!email || !password || (!isLogin && (!name.trim() || !rePassword))) {
-      Alert.alert("Incomplete", "Please fill all required fields.");
+      showPrompt({ title: 'Incomplete', message: 'Please fill all required fields.' });
       return;
     }
 
@@ -195,23 +208,50 @@ export default function LoginPage() {
         password,
       });
       if (error) {
-        Alert.alert("Wrong email or password", "Please check your credentials and try again.");
+        showPrompt({ title: 'Wrong email or password', message: 'Please check your credentials and try again.' });
       } else {
-        try {
-          const { data: userRes } = await supabase.auth.getUser();
-          const userId = userRes?.user?.id;
-          let shouldShowOnboarding = true;
-          if (userId) {
-            const seen = await AsyncStorage.getItem(`onboarding_seen_v2:${userId}`);
-            shouldShowOnboarding = !seen;
-          } else {
-            const legacy = await AsyncStorage.getItem("onboarding_seen_v2");
-            shouldShowOnboarding = !legacy;
+          try {
+            const { data: userRes } = await supabase.auth.getUser();
+            const userId = userRes?.user?.id;
+            let shouldShowOnboarding = false;
+
+            if (userId) {
+              // Check local seen flag first
+              const seen = await AsyncStorage.getItem(`onboarding_seen_v2:${userId}`);
+              if (!seen) {
+                // Check database users.created_at to ensure this is a newly-registered account
+                try {
+                  const { data: dbUser, error: dbErr } = await supabase
+                    .from("users")
+                    .select("created_at")
+                    .eq("user_id", userId)
+                    .maybeSingle();
+
+                  if (!dbErr && dbUser?.created_at) {
+                    const createdAt = new Date(dbUser.created_at).getTime();
+                    const ageMs = Date.now() - createdAt;
+                    const ONE_DAY = 1000 * 60 * 60 * 24;
+                    const isNew = ageMs <= ONE_DAY;
+                    shouldShowOnboarding = isNew;
+                  } else {
+                    // If DB lookup fails, fallback to showing onboarding once
+                    shouldShowOnboarding = true;
+                  }
+                } catch (e) {
+                  // on error, be conservative: don't show onboarding repeatedly
+                  shouldShowOnboarding = false;
+                }
+              }
+            } else {
+              // no user id (edge-case): fallback to legacy AsyncStorage flag
+              const legacy = await AsyncStorage.getItem("onboarding_seen_v2");
+              shouldShowOnboarding = !legacy;
+            }
+
+            router.replace(shouldShowOnboarding ? "/auth/Onboarding" : "/(tabs)/map");
+          } catch {
+            router.replace("/(tabs)/map");
           }
-          router.replace(shouldShowOnboarding ? "/auth/Onboarding" : "/(tabs)/map");
-        } catch {
-          router.replace("/(tabs)/map");
-        }
       }
     } else {
       const { data, error } = await supabase.auth.signUp({
@@ -219,7 +259,7 @@ export default function LoginPage() {
         password,
       });
       if (error) {
-        Alert.alert("Sign-up failed", error.message);
+        showPrompt({ title: 'Sign-up failed', message: error.message });
         return;
       }
       const userId = data.user?.id;
@@ -227,14 +267,24 @@ export default function LoginPage() {
         .from("users")
         .insert([{ user_id: userId, full_name: sanitizedName, email: sanitizedEmail }]);
       if (insertError) {
-        Alert.alert("Error saving profile", insertError.message);
+        showPrompt({ title: 'Error saving profile', message: insertError.message });
       } else {
-        Alert.alert("Account Created", "Your account has been created. Please log in.", [
-          { text: "OK", onPress: () => setIsLogin(true) },
-        ]);
+        showPrompt({
+          title: 'Account Created',
+          message: 'Your account has been created. Please log in.',
+          buttons: [
+            { text: 'OK', onPress: () => setIsLogin(true) },
+          ],
+        });
       }
     }
   };
+
+  const [promptState, setPromptState] = React.useState({ visible: false, title: '', message: '', buttons: undefined as any });
+  const showPrompt = ({ title, message, buttons = [{ text: 'OK' }] }: { title?: string; message?: string; buttons?: any }) => {
+    setPromptState({ visible: true, title: title || '', message: message || '', buttons });
+  };
+  const hidePrompt = () => setPromptState((s) => ({ ...s, visible: false }));
 
   // Loading gate — fonts only
   if (!fontsLoaded) {
@@ -445,7 +495,14 @@ export default function LoginPage() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
-    </SafeAreaView>
+              <ThemedPrompt
+                visible={promptState.visible}
+                title={promptState.title}
+                message={promptState.message}
+                buttons={promptState.buttons}
+                onRequestClose={hidePrompt}
+              />
+        </SafeAreaView>
   );
 }
 

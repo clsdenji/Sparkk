@@ -32,8 +32,6 @@ export async function getEtaSeconds(
   try {
     let travelMode = modeToGoogle(mode);
 
-    // Google complains if timestamp is "now" or slightly behind server time.
-    // Make it 10 minutes in the future.
     const departureEpochSec = Math.floor(Date.now() / 1000) + 10 * 60;
 
     const makeBody = (tm: ReturnType<typeof modeToGoogle>) => {
@@ -320,7 +318,6 @@ function modeToGoogle(
   }
 }
 
-/** Format ETA: 75s → "1 min", 3800s → "1 hr 3 min" */
 export function formatEta(seconds: number): string {
   const mins = Math.round(seconds / 60);
   if (mins < 60) return `${mins} min`;
@@ -329,7 +326,6 @@ export function formatEta(seconds: number): string {
   return m ? `${h} hr ${m} min` : `${h} hr`;
 }
 
-/** Arrival time text: now + ETA → "14:37" */
 export function getArrivalText(
   seconds: number,
   now = new Date()

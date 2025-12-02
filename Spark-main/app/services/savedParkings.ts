@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 
 export type SavedParking = {
-  id: string; // unique key, e.g. `${lat.toFixed(6)},${lng.toFixed(6)}`
+  id: string; 
   name: string;
   address?: string | null;
   lat: number;
@@ -43,7 +43,6 @@ async function loadFromDb() {
       lng: row.lng,
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
     }));
-    // Best-effort: backfill missing addresses for a few recent items
     try { void backfillMissingAddresses(); } catch {}
   } catch (e) {
     console.warn('savedParkings load failed', e);
@@ -146,7 +145,6 @@ export function makeParkingId(lat: number, lng: number): string {
     console.warn("Invalid coordinates:", lat, lng);
     return `invalid-${Math.random().toString(36).slice(2)}`; // Fallback ID
   }
-  // 6 decimals ~ 0.11 meter, good for uniqueness while stable for UI
   return `${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
 

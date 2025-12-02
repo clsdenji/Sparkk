@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Dimensions, Platform, StatusBar, Alert } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Dimensions, Platform, StatusBar } from "react-native";
+import ThemedPrompt from "../components/ThemedPrompt";
 import SmoothScreen from "./components/SmoothScreen";
 import { useRouter } from "expo-router";
 import { SavedParking, subscribeSavedParkings, getSavedParkings, clearSavedParkings, removeParking } from "../services/savedParkings";
@@ -15,6 +16,8 @@ export default function SavedScreen() {
   const router = useRouter();
   const [items, setItems] = useState<SavedParking[]>(() => getSavedParkings());
   const [loggedIn, setLoggedIn] = useState<boolean>(false);
+  const [selectionMode, setSelectionMode] = useState<boolean>(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     const unsub = subscribeSavedParkings((arr) => setItems(arr));
@@ -31,27 +34,90 @@ export default function SavedScreen() {
   }, []);
 
   const clearAll = async () => {
-    Alert.alert("Clear saved", "Remove all saved parkings?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Clear",
-        style: "destructive",
-        onPress: async () => {
-          try { await clearSavedParkings(); } catch (e) { console.warn("Failed to clear saved", e); }
-          setItems([]);
+    setPrompt({
+      visible: true,
+      title: "Clear saved",
+      message: "Remove all saved parkings?",
+      buttons: [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await clearSavedParkings();
+            } catch (e) {
+              console.warn("Failed to clear saved", e);
+            }
+            setItems([]);
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const found = prev.indexOf(id) !== -1;
+      if (found) return prev.filter((p) => p !== id);
+      return [...prev, id];
+    });
+  };
+
+  const enterSelectionMode = (initialId?: string) => {
+    setSelectionMode(true);
+    if (initialId) setSelectedIds([initialId]);
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds([]);
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    setPrompt({
+      visible: true,
+      title: `Delete ${selectedIds.length} item(s)?`,
+      message: `This will permanently remove the selected saved parkings.`,
+      buttons: [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await Promise.all(selectedIds.map((id) => removeParking(id)));
+            } catch (e) {
+              console.warn("Bulk remove failed", e);
+            } finally {
+              setItems((prev) => prev.filter((p) => !selectedIds.includes(p.id)));
+              exitSelectionMode();
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  type PromptButton = { text: string; style?: "default" | "destructive" | "cancel"; onPress?: () => void };
+  const [prompt, setPrompt] = useState<{ visible: boolean; title?: string; message?: string; buttons?: PromptButton[] }>({ visible: false });
 
   const renderItem = ({ item }: { item: SavedParking }) => {
     const sub = item.address ?? `${item.lat.toFixed(5)}, ${item.lng.toFixed(5)}`;
     return (
       <TouchableOpacity
-        style={styles.squareItem}
+        style={[
+          styles.squareItem,
+          selectionMode && selectedIds.indexOf(item.id) !== -1 ? styles.squareItemSelected : undefined,
+        ]}
         activeOpacity={0.9}
         onPress={() => {
           try {
+            if (selectionMode) {
+              toggleSelection(item.id);
+              return;
+            }
             router.push({
               pathname: "/(tabs)/map",
               params: {
@@ -65,13 +131,14 @@ export default function SavedScreen() {
           } catch {}
         }}
         onLongPress={() => {
-          Alert.alert("Remove saved", `Remove \"${item.name}\" from saved?`, [
-            { text: "Cancel", style: "cancel" },
-            { text: "Remove", style: "destructive", onPress: async () => { try { await removeParking(item.id); } catch {} } },
-          ]);
+          // start selection mode with this item
+          enterSelectionMode(item.id);
         }}
       >
-        <View style={styles.squareContent}>
+        <View style={[
+          styles.squareContent,
+          selectionMode ? { paddingRight: 36 } : undefined,
+        ]}>
           <Text style={styles.squareName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6} allowFontScaling>
             {item.name}
           </Text>
@@ -82,6 +149,11 @@ export default function SavedScreen() {
         <Text style={styles.squareTime} numberOfLines={1} allowFontScaling>
           {new Date(item.createdAt).toLocaleString()}
         </Text>
+        {selectionMode && (
+          <View style={styles.selectBadge}>
+            <Text style={styles.selectBadgeText}>{selectedIds.indexOf(item.id) !== -1 ? '⚡' : ''}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -92,11 +164,29 @@ export default function SavedScreen() {
         <View style={styles.container}>
           <View style={styles.headerRow}>
             <Text style={styles.recentTitle}>Saved Parkings</Text>
-            {loggedIn && (
-              <TouchableOpacity onPress={clearAll} style={styles.clearButton}>
-                <Text style={styles.clearText}>Clear</Text>
-              </TouchableOpacity>
-            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {selectionMode ? (
+                <>
+                  <TouchableOpacity onPress={exitSelectionMode} style={styles.clearButton}>
+                    <Text style={styles.clearText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={deleteSelected} style={[styles.clearButton, { marginLeft: WP(2) }]}>
+                    <Text style={styles.clearText}>Delete ({selectedIds.length})</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  {loggedIn && (
+                    <TouchableOpacity onPress={clearAll} style={styles.clearButton}>
+                      <Text style={styles.clearText}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => setSelectionMode(true)} style={[styles.clearButton, { marginLeft: WP(2) }]}> 
+                    <Text style={styles.clearText}>Select</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
 
           {!loggedIn ? (
@@ -120,6 +210,13 @@ export default function SavedScreen() {
             />
           )}
         </View>
+        <ThemedPrompt
+          visible={!!prompt.visible}
+          title={prompt.title}
+          message={prompt.message}
+          buttons={prompt.buttons}
+          onRequestClose={() => setPrompt({ visible: false })}
+        />
       </SafeAreaView>
     </SmoothScreen>
   );
@@ -176,7 +273,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     ...Platform.select({
       ios: {
-        shadowColor: "#444", // gray shadow outline
+        shadowColor: "#444", 
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.6,
         shadowRadius: 10,
@@ -207,5 +304,26 @@ const styles = StyleSheet.create({
     color: "#FFD166",
     fontSize: Math.max(10, WP(3.4)),
     alignSelf: "flex-end",
+  },
+  squareItemSelected: {
+    borderColor: '#FFD166',
+    borderWidth: 2,
+  },
+  selectBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#FFD166',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectBadgeText: {
+    color: '#FFD166',
+    fontWeight: '900',
   },
 });

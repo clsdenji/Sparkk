@@ -7,14 +7,11 @@ import { Gesture, GestureDetector, PanGestureHandlerEventPayload } from "react-n
 
 export default function SmoothScreen({ children }: PropsWithChildren) {
   const focused = useIsFocused();
-  // Avoid flicker on tab change by preventing re-mount animations.
-  // We run the entering animation only once on the very first mount.
   const hasMountedRef = useRef(false);
   useEffect(() => {
     hasMountedRef.current = true;
   }, []);
 
-  // Swipe-to-switch tabs: navigate to previous/next tab on horizontal fling
   const navigation = useNavigation<any>();
   const pan = useMemo(() => {
     const SWIPE_TX = 40; // px
@@ -47,9 +44,6 @@ export default function SmoothScreen({ children }: PropsWithChildren) {
   return (
     <GestureDetector gesture={pan}>
       <Animated.View
-        // Keep the component mounted across focus changes and avoid using a toggling key
-        // so it doesn't re-mount and flicker.
-        // Only animate on first mount, never on subsequent tab switches.
         entering={hasMountedRef.current ? undefined : FadeInDown.duration(180)}
         layout={Layout.springify().damping(16).stiffness(180)}
         style={styles.root}

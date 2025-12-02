@@ -1,16 +1,16 @@
 // app/(tabs)/profile.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, Image, ImageBackground, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Animated, Easing, TextInput, ScrollView, Modal } from "react-native";
+import ThemedPrompt from "../components/ThemedPrompt";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { supabase } from "../services/supabaseClient";
 import { useRouter } from "expo-router";
 
-// 🎨 Use same yellow as SavedScreen
-const GOLD = "#FFD166";          // main accent
-const GREEN = "#FFD166";         // was neutral gray; now yellow accent
-const LOGOUT_GREEN = "#FFD166";  // was green; now yellow accent
+const GOLD = "#FFD166";          
+const GREEN = "#FFD166";        
+const LOGOUT_GREEN = "#FFD166";  
 
 
 const AVATARS = [
@@ -36,10 +36,8 @@ export default function ProfileScreen() {
   const [showAddressInfo, setShowAddressInfo] = useState<boolean>(false);
   const router = useRouter();
 
-  // Live preview: prefer selected avatar if present
   const previewAvatarUrl = selectedAvatar || avatarUrl;
 
-  // Subtle pulsing glow for the avatar
   const glowScale = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
@@ -149,7 +147,7 @@ export default function ProfileScreen() {
     (async () => {
       try {
         setLocLoading(true);
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         if (status !== "granted") {
           setCurrentLocName("Location permission needed");
           return;
@@ -211,24 +209,27 @@ export default function ProfileScreen() {
       setAvatarUrl(selectedAvatar);
       setChoosing(false);
       setSelectedAvatar(null);
-      Alert.alert("Saved", "Your avatar has been updated!");
+      showPrompt({ title: 'Saved', message: 'Your avatar has been updated!' });
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to update avatar.");
+      showPrompt({ title: 'Error', message: e.message || 'Failed to update avatar.' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.replace("/auth/LoginPage");
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    // show goodbye screen briefly, then redirect to login
+    router.replace('/auth/Goodbye');
   };
 
   const handleSaveName = async () => {
     if (!user) return;
     const value = nameInput.trim();
     if (!value) {
-      Alert.alert("Name required", "Please enter your name.");
+      showPrompt({ title: 'Name required', message: 'Please enter your name.' });
       return;
     }
     try {
@@ -240,13 +241,19 @@ export default function ProfileScreen() {
       if (error) throw error;
       setFullName(value);
       setEditingName(false);
-      Alert.alert("Saved", "Your name has been updated!");
+      showPrompt({ title: 'Saved', message: 'Your name has been updated!' });
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to update name.");
+      showPrompt({ title: 'Error', message: e.message || 'Failed to update name.' });
     } finally {
       setNameSaving(false);
     }
   };
+
+  const [promptState, setPromptState] = React.useState({ visible: false, title: '', message: '', buttons: undefined as any });
+  const showPrompt = ({ title, message, buttons = [{ text: 'OK' }] }: { title?: string; message?: string; buttons?: any }) => {
+    setPromptState({ visible: true, title: title || '', message: message || '', buttons });
+  };
+  const hidePrompt = () => setPromptState((s) => ({ ...s, visible: false }));
 
   if (loading) {
     return (
@@ -291,7 +298,7 @@ export default function ProfileScreen() {
                 <LinearGradient colors={[GOLD, GREEN]} style={styles.avatarBorder}>
                   <View style={styles.avatarInner}>
                     <Image
-                      source={previewAvatarUrl ? { uri: previewAvatarUrl } : require("@/assets/images/icon.png")}
+                      source={previewAvatarUrl ? { uri: previewAvatarUrl } : require("@/assets/images/image.png")}
                       style={styles.avatar}
                     />
                     {/* Glossy highlight */}
@@ -504,6 +511,13 @@ export default function ProfileScreen() {
         </View>
       </View>
     </Modal>
+    <ThemedPrompt
+      visible={promptState.visible}
+      title={promptState.title}
+      message={promptState.message}
+      buttons={promptState.buttons}
+      onRequestClose={hidePrompt}
+    />
     </>
   );
 }
@@ -554,15 +568,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "stretch",
     justifyContent: "flex-start",
-    paddingHorizontal: 0, // remove padding so header can be truly full-bleed
+    paddingHorizontal: 0, 
     paddingVertical: 24,
   },
   scrollViewFullWidth: { width: "100%", alignSelf: "stretch" },
   topHeader: {
     width: "100%",
-    alignSelf: "stretch", // ensure full-width even when ScrollView centers children
-    minHeight: 490, // extend header further down per request
-    alignItems: "center",
+    alignSelf: "stretch", 
     justifyContent: "center",
     marginTop: 0,
     marginBottom: 0,
@@ -575,9 +587,8 @@ const styles = StyleSheet.create({
     width: "100%",
     flex: 1,
     alignItems: "center",
-    justifyContent: "flex-end", // push avatar/name/email lower in the header
-    paddingTop: 8,
-    paddingBottom: 40, // space above the divider
+    justifyContent: "flex-end", 
+    paddingBottom: 40,
   },
   headerFade: {
     position: "absolute",
@@ -744,12 +755,11 @@ const styles = StyleSheet.create({
   nameActions: { width: "100%", alignItems: "center", marginTop: 10, marginBottom: 8 },
 
   avatarWrap: { alignItems: "center", justifyContent: "center", marginBottom: 20 },
-  // Outer gradient ring (border)
   avatarBorder: {
     width: 146,
     height: 146,
     borderRadius: 73,
-    padding: 4, // ring thickness
+    padding: 4, 
     alignItems: "center",
     justifyContent: "center",
     shadowColor: GREEN,
@@ -758,7 +768,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
   },
-  // Inner dark container to clip shine and image
   avatarInner: {
     width: "100%",
     height: "100%",
@@ -768,20 +777,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Actual avatar image fills the inner circle
   avatar: { width: "100%", height: "100%", borderRadius: 69 },
-  // Pulsing glow behind everything
   glow: {
     position: "absolute",
     width: 172,
     height: 172,
     borderRadius: 86,
     opacity: 0.35,
-    overflow: "hidden", // ensure the inner gradient clips to a perfect circle
-    pointerEvents: "none",
+    overflow: "hidden", 
   },
   glowGradient: { borderRadius: 86 },
-  // Glossy highlight overlay
   shine: {
     position: "absolute",
     top: 0,
@@ -856,7 +861,6 @@ const styles = StyleSheet.create({
   name: { fontSize: 22, color: GOLD, fontWeight: "700", marginTop: 10, textAlign: "center" },
   email: { fontSize: 14, color: "#bbb", marginBottom: 30 },
 
-  // ✅ Your “bubble” turned into a pill
   logoutBubble: {
     width: "100%",
     height: 56,
@@ -870,7 +874,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 28,
-    padding: 2, // gradient border thickness
+    padding: 2, 
     alignItems: "center",
     justifyContent: "center",
     shadowColor: LOGOUT_GREEN,
@@ -898,7 +902,6 @@ const styles = StyleSheet.create({
     borderColor: LOGOUT_GREEN,
   },
   logoutTextNeutral: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  // Address modal styles
   addressModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -929,7 +932,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Avatar picker modal card
   pickerModalCard: {
     width: '100%',
     maxWidth: 500,

@@ -214,8 +214,7 @@ const LocationPermission: React.FC<Props> = ({ onPermissionGranted }) => {
     );
   };
 
-  if (!visible) return null; // ✅ removes component after success
-
+  if (!visible) return null; 
   return (
     <View style={styles.overlay}>
       <View style={styles.centerBox}>

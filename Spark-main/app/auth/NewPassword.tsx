@@ -10,7 +10,6 @@ import {
   Platform,
   Animated,
   SafeAreaView,
-  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,8 +18,8 @@ import { useFonts } from "expo-font";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Roboto_400Regular } from "@expo-google-fonts/roboto";
 import { supabase } from "../services/supabaseClient";
+import ThemedPrompt from "../components/ThemedPrompt";
 
-// Black & Yellow palette
 const GOLD = "#FFDE59";
 const YELLOW_GLOW = "rgba(255, 209, 102, 0.45)";
 const AMBER = "#FFB84D";
@@ -124,20 +123,49 @@ export default function NewPasswordScreen() {
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) {
-        Alert.alert("Error", error.message);
+        setPrompt({
+          visible: true,
+          title: "Error",
+          message: error.message,
+          buttons: [{ text: "OK" }],
+        });
         return;
       }
-      Alert.alert(
-        "Password updated",
-        "You can now log in with your new password.",
-        [{ text: "OK", onPress: () => router.replace("/auth/LoginPage") }]
-      );
+      setPrompt({
+        visible: true,
+        title: "Password updated",
+        message: "You can now log in with your new password.",
+        buttons: [
+          {
+            text: "OK",
+            onPress: () => router.replace("/auth/LoginPage"),
+          },
+        ],
+      });
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "Failed to update password.");
+      setPrompt({
+        visible: true,
+        title: "Error",
+        message: e?.message || "Failed to update password.",
+        buttons: [{ text: "OK" }],
+      });
     } finally {
       setUpdating(false);
     }
   };
+
+  type PromptButton = {
+    text: string;
+    style?: "default" | "destructive" | "cancel";
+    onPress?: () => void;
+  };
+
+  const [prompt, setPrompt] = useState<{
+    visible: boolean;
+    title?: string;
+    message?: string;
+    buttons?: PromptButton[];
+  }>({ visible: false });
 
   if (!fontsLoaded) return null;
 
@@ -256,6 +284,13 @@ export default function NewPasswordScreen() {
           </Animated.View>
         </KeyboardAvoidingView>
       </LinearGradient>
+      <ThemedPrompt
+        visible={!!prompt.visible}
+        title={prompt.title}
+        message={prompt.message}
+        buttons={prompt.buttons}
+        onRequestClose={() => setPrompt({ visible: false })}
+      />
     </SafeAreaView>
   );
 }

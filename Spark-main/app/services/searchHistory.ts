@@ -55,8 +55,6 @@ const load = async () => {
   }
 };
 
-// No local persistence; database is the source of truth
-
 // load once and notify subscribers after load completes
 (async () => {
   await load();
@@ -134,7 +132,6 @@ export function getSearchHistory(): SearchEntry[] {
 
 export function subscribeSearchHistory(cb: (h: SearchEntry[]) => void) {
   SUBSCRIBERS.push(cb);
-  // only call immediately if we've finished loading to avoid double notification
   if (loaded) {
     try {
       cb(HISTORY.slice());
